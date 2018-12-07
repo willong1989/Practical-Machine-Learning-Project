@@ -1,0 +1,150 @@
+---
+title: "Practical Machine Learning Project"
+author: "Huilong"
+date: "November 27, 2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# Synopsis
+Using data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants who were asked to perform barbell lifts correctly and incorrectly in 5 different ways, we will predict the manner("Classe") in which they did the exercise.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Exploratory Data Analysis
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+```{r cache=TRUE}
+library(caret)
+train <- read.csv("training.csv")
+test <- read.csv("testing.csv")
+
+#Exploring the data
+dim(train)
+dim(test)
+
+differing <- match(FALSE,(names(test) == names(train)))
+names(train)[differing]
+names(test)[differing]
+```
+
+```{r cache=TRUE}
+#Plot the distribution of Excercise
+plot(train$classe, xlab="Activity class", ylab="count", main="Distribution of Exercise Method",
+col="red")
+```
+
+In the plot, we can see that most activities are classified in class "A", which is performing the activity exactly as specified. 
+
+
+# Cleaning the data
+
+```{r cache=TRUE}
+# Here we create a partition of the traning data set 
+set.seed(37)
+intrain1 <- createDataPartition(train$classe, p=0.7, list=FALSE)
+train1 <- train[intrain1,]
+test1 <- train[-intrain1,]
+dim(train1)
+```
+
+If there are columns of completely NA values in any of the data sets, we will remove them from both.
+```{r cache=TRUE}
+# remove variables with nearly zero variance
+nzv <- nearZeroVar(train1)
+train1 <- train1[, -nzv]
+test <- test[, -nzv]
+test1 <- test1[, -nzv]
+
+# remove variables that are almost always NA
+mostlyNA <- sapply(train1, function(x) mean(is.na(x))) > 0.95
+train1 <- train1[, mostlyNA==F]
+test <- test[, mostlyNA==F]
+test1 <- test1[, mostlyNA==F]
+
+# remove variables that don't make sense for prediction (X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp)
+train1 <- train1[, -(1:5)]
+test <- test[, -(1:5)]
+test1 <- test1[, -(1:5)]
+
+dim(train1)
+dim(test1)
+dim(test)
+```
+
+
+# Model Building
+
+Different models: classification tree,  random forest,  gradient boosting method
+5 foldscross-validation is used to avoid overfitting and improve the efficicency of the model
+
+```{r cache=TRUE}
+# Classification tree model
+library(rattle)
+trControl <- trainControl(method="cv", number=5)
+model_CT <- train(classe~., data=train1, method="rpart", trControl=trControl)
+fancyRpartPlot(model_CT$finalModel)
+```
+
+```{r cache=TRUE}
+trainpred <- predict(model_CT,newdata=test1)
+confMatCT <- confusionMatrix(test1$classe,trainpred)
+confMatCT$table
+confMatCT$overall[1]
+```
+
+The accuracy of this first model is very low (about 50%). This means that the prediction is not very well.
+
+
+```{r cache=TRUE}
+# Random Forest model
+#trControl <- trainControl(method="cv", number=5)
+model_RF <- train(classe ~ ., data=train1, method="rf", trControl=trControl)
+```
+
+```{r cache=TRUE}
+trainpred <- predict(model_RF,newdata=test1)
+confMatRF <- confusionMatrix(test1$classe,trainpred)
+# display confusion matrix and model accuracy
+confMatRF$table
+confMatRF$overall[1]
+```
+
+With random forest, we reach an accuracy of 99.6% using cross-validation with 5 steps. This is pretty good. But let's see what we can expect with Gradient boosting.
+
+
+
+
+```{r cache=TRUE}
+# Gradient Boosting model
+model_GBM <- train(classe~., data=train1, method="gbm", trControl=trControl, verbose=FALSE)
+```
+
+```{r cache=TRUE}
+trainpred <- predict(model_GBM,newdata=test1)
+confMatGBM <- confusionMatrix(test1$classe,trainpred)
+confMatGBM$table
+confMatGBM$overall[1]
+```
+Precision with 5 folds is 98.4%.
+
+
+# Conclusion
+This shows that the random forest model is the best one with the out of sample error of 0.4%. We will then use it to predict the values of classe for the test data set.
+
+```{r cache=TRUE}
+FinalTestPred <- predict(model_RF,newdata=test)
+FinalTestPred
+```
+
+
+
+
+
